@@ -491,6 +491,22 @@ quill.on('text-change', () => {
   // Debounced save will handle this
 });
 
+// Initialize Quill editor for resume output (customized resume)
+const resumeOutQuill = new Quill('#resume-out', {
+  theme: 'snow',
+  placeholder: 'Your customized resume will appear here...',
+  modules: {
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'indent': '-1'}, { 'indent': '+1' }],
+      ['link'],
+      ['clean']
+    ]
+  }
+});
+
 // Save button
 saveResumeBtn.addEventListener('click', () => {
   setBaseResume(quill.root.innerHTML);
@@ -657,7 +673,7 @@ analyzeBtn.addEventListener('click', async () => {
       data = await analyzeInChunks(jd, resume);
     } else {
       // Short job description - process normally
-      const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume.\n\nCRITICAL RULE: The customized_resume MUST include ALL work history entries, jobs, and positions from the original resume. Do NOT omit or truncate any positions. You may reorder them to put the most relevant experience first, but every position from the original resume must appear in the final output.\n\nIf the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
+      const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume.\n\nCRITICAL RULES:\n1. The customized_resume MUST include ALL work history entries, jobs, and positions from the original resume. Do NOT omit, truncate, or summarize any positions. Every single job, role, and position from the original resume must appear in the final output with its full details and bullet points.\n2. EXCLUDE any Equal Employment Opportunity (EEO) content from the customized resume. Remove text about: equal employment opportunities, race, color, religion, age, sex, national origin, disability, genetics, veteran status, sexual orientation, gender identity, neurodivergence, neurotypicality, or any other protected characteristics. This is employer policy, not job qualifications.\n3. Focus ONLY on job-relevant skills, experience, and qualifications.\n\nIf the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
       
       setAnalyzeLoading('Analyzing job description...');
       const raw = await callAI(system, 'Job description:\n\n' + jd, 8000);
@@ -806,7 +822,9 @@ ${resume}
 
 Task: ${section.prompt}
 
-CRITICAL RULE: When generating the EXPERIENCE section, you MUST include ALL work history entries, jobs, and positions from the original resume. Do NOT omit or truncate any positions. You may reorder them to put the most relevant experience first, but every position from the original resume must appear in the final output.
+CRITICAL RULES:
+1. When generating the EXPERIENCE section, you MUST include ALL work history entries, jobs, and positions from the original resume. Do NOT omit, truncate, or summarize any positions. Every single job must appear with full details and bullet points.
+2. EXCLUDE any Equal Employment Opportunity (EEO) content - remove text about race, color, religion, age, sex, national origin, disability, genetics, veteran status, sexual orientation, gender identity, neurodivergence, or other protected characteristics.
 
 Rules:
 - Use plain text formatting (no markdown)
@@ -816,6 +834,7 @@ Rules:
 - Naturally incorporate relevant keywords
 - Be truthful to the original resume
 - Include complete work history - every job/position from original
+- EXCLUDE EEO content (race, color, religion, age, sex, national origin, disability, genetics, veteran status, sexual orientation, gender identity, neurodivergence)
 
 Return ONLY the ${section.name} section text, nothing else.`;
 
@@ -983,7 +1002,8 @@ function renderResults(d) {
     clarifyCard.style.display = 'none';
   }
 
-  document.getElementById('resume-out').innerHTML = resumeToHtml(d.customized_resume || '');
+  // Set content in Quill editor (preserves formatting)
+  resumeOutQuill.root.innerHTML = resumeToHtml(d.customized_resume || '');
   
   // Build detailed changes summary
   let changesHtml = '';
@@ -1017,20 +1037,20 @@ resetBtn.addEventListener('click', () => {
 });
 
 document.getElementById('copy-resume-btn').addEventListener('click', () => {
-  const text = document.getElementById('resume-out').innerText;
+  const text = resumeOutQuill.getText();
   navigator.clipboard.writeText(text).then(() => flashBtnText('copy-resume-btn', 'Copied!'));
 });
 
 document.getElementById('download-resume-txt-btn').addEventListener('click', () => {
-  downloadText(document.getElementById('resume-out').innerText, 'Tailored_Resume.txt');
+  downloadText(resumeOutQuill.getText(), 'Tailored_Resume.txt');
 });
 
 document.getElementById('download-resume-pdf-btn').addEventListener('click', () => {
-  downloadPDF(document.getElementById('resume-out').innerText, 'Tailored_Resume.pdf');
+  downloadPDF(resumeOutQuill.getText(), 'Tailored_Resume.pdf');
 });
 
 document.getElementById('download-resume-docx-btn').addEventListener('click', () => {
-  downloadDOCXFromHtml(document.getElementById('resume-out').innerHTML, 'Tailored_Resume.docx');
+  downloadDOCXFromHtml(resumeOutQuill.root.innerHTML, 'Tailored_Resume.docx');
 });
 
 // ===== Cover Letter tab =====
