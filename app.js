@@ -1034,6 +1034,8 @@ resetBtn.addEventListener('click', () => {
   charCount.textContent = '';
   document.getElementById('answers-input').value = '';
   showErr(errorBox, '');
+  // Clear cover letter
+  coverOut.textContent = 'Your customized cover letter will appear here after you click Generate.';
 });
 
 document.getElementById('copy-resume-btn').addEventListener('click', () => {
@@ -1073,6 +1075,7 @@ coverGenerateBtn.addEventListener('click', async () => {
 
   coverResults.style.display = 'none';
   coverLoading.style.display = 'flex';
+  coverOut.textContent = '';
 
   // Strip HTML tags for the AI
   const tempDiv = document.createElement('div');
