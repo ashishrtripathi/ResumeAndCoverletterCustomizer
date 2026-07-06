@@ -273,6 +273,32 @@ a { color: #2a5db0; }
   font-style: italic;
 }
 
+/* Quill editor styles */
+#resume-editor {
+  height: 400px;
+  margin-bottom: 12px;
+}
+
+.ql-toolbar.ql-snow {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: #f7f5f1;
+}
+
+.ql-container.ql-snow {
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.ql-editor {
+  font-size: 13.5px;
+  line-height: 1.6;
+  min-height: 350px;
+}
+
+.ql-editor.ql-blank::before {
+  color: var(--text-faint);
+  font-style: normal;
+}
+
 @media (max-width: 600px) {
   .wrap { padding: 20px 14px 60px; }
   .row { flex-direction: column; }

@@ -299,20 +299,50 @@ const saveConfirm = document.getElementById('save-confirm');
 const uploadResumeBtn = document.getElementById('upload-resume-btn');
 const resumeFileInput = document.getElementById('resume-file-input');
 
-resumeEdit.value = getBaseResume();
+// Initialize Quill rich text editor
+const quill = new Quill('#resume-editor', {
+  theme: 'snow',
+  placeholder: 'Paste your resume here or upload a file...',
+  modules: {
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'indent': '-1'}, { 'indent': '+1' }],
+      ['link'],
+      ['clean']
+    ]
+  }
+});
+
+// Load saved resume into Quill
+const savedResume = getBaseResume();
+if (savedResume) {
+  // Convert plain text to HTML for Quill
+  const htmlResume = savedResume.replace(/\n/g, '<br>');
+  quill.root.innerHTML = htmlResume;
+}
 
 // Auto-save resume every 5 seconds
 setInterval(() => {
-  const currentText = resumeEdit.value;
+  const currentText = quill.getText().trim();
   const savedText = getBaseResume();
   if (currentText !== savedText) {
-    setBaseResume(currentText);
+    // Save as HTML to preserve formatting
+    setBaseResume(quill.root.innerHTML);
   }
 }, 5000);
 
-// Also save on blur (when user clicks away from textarea)
-resumeEdit.addEventListener('blur', () => {
-  setBaseResume(resumeEdit.value);
+// Also save on blur
+quill.on('text-change', () => {
+  // Debounced save will handle this
+});
+
+// Save button
+saveResumeBtn.addEventListener('click', () => {
+  setBaseResume(quill.root.innerHTML);
+  saveConfirm.style.display = 'inline';
+  setTimeout(() => saveConfirm.style.display = 'none', 2000);
 });
 
 // File upload handling
@@ -327,26 +357,29 @@ resumeFileInput.addEventListener('change', async (e) => {
   const extension = file.name.split('.').pop().toLowerCase();
   
   try {
+    let html = '';
     let text = '';
     
     if (extension === 'txt') {
       // Plain text file
       text = await file.text();
+      html = text.replace(/\n/g, '<br>');
     } else if (extension === 'docx') {
-      // Word document
+      // Word document - preserve formatting
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      text = result.value;
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      html = result.value;
+      text = await file.text();
     } else if (extension === 'doc') {
-      // Old Word format - try mammoth anyway, may work for some files
+      // Old Word format
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      text = result.value;
-      if (!text) {
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      html = result.value;
+      if (!html) {
         throw new Error('Could not read .doc file. Please save it as .docx or .txt and try again.');
       }
     } else if (extension === 'pdf') {
-      // PDF file
+      // PDF file - extract text
       const arrayBuffer = await file.arrayBuffer();
       pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -358,16 +391,20 @@ resumeFileInput.addEventListener('change', async (e) => {
         textParts.push(pageText);
       }
       text = textParts.join('\n\n');
+      html = text.replace(/\n/g, '<br>');
     } else {
       throw new Error('Unsupported file type. Please use .txt, .doc, .docx, or .pdf');
     }
     
-    if (!text || text.trim().length === 0) {
-      throw new Error('Could not extract text from the file. The file may be empty or contain only images.');
+    if (!html && !text) {
+      throw new Error('Could not extract content from the file. The file may be empty or contain only images.');
     }
     
-    resumeEdit.value = text;
-    setBaseResume(text);
+    // Set the content in Quill
+    quill.root.innerHTML = html || text.replace(/\n/g, '<br>');
+    
+    // Save immediately
+    setBaseResume(quill.root.innerHTML);
     saveConfirm.style.display = 'inline';
     setTimeout(() => saveConfirm.style.display = 'none', 2000);
   } catch (err) {
@@ -435,14 +472,20 @@ const ANALYZE_SCHEMA_INSTRUCTIONS = `Respond ONLY with valid JSON, no markdown f
 
 analyzeBtn.addEventListener('click', async () => {
   const jd = jdInput.value.trim();
-  const resume = getBaseResume().trim();
+  const resumeHtml = getBaseResume().trim();
   showErr(errorBox, '');
-  if (!resume) { showErr(errorBox, 'Please add your resume first in the "My Resume" tab.'); return; }
+  if (!resumeHtml) { showErr(errorBox, 'Please add your resume first in the "My Resume" tab.'); return; }
   if (!jd) { showErr(errorBox, 'Please paste a job description first.'); return; }
   currentJD = jd;
+  
+  // Strip HTML tags for the AI
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = resumeHtml;
+  const resume = tempDiv.textContent || tempDiv.innerText || '';
+  
   setAnalyzeLoading('Analyzing job description and matching keywords...');
 
-  const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${getBaseResume()}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume. If the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
+  const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume. If the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
 
   try {
     const raw = await callAI(system, 'Job description:\n\n' + jd, 6000);
@@ -459,9 +502,15 @@ document.getElementById('regenerate-btn').addEventListener('click', async () => 
   const answers = document.getElementById('answers-input').value.trim();
   if (!answers) return;
   showErr(errorBox, '');
+  
+  // Strip HTML tags for the AI
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = getBaseResume();
+  const resume = tempDiv.textContent || tempDiv.innerText || '';
+  
   setAnalyzeLoading('Regenerating resume with your additional context...');
 
-  const system = `You are an expert ATS resume optimizer. Here is the candidate's base resume:\n\n${getBaseResume()}\n\nThe candidate previously got a job description and answered clarifying questions to address experience gaps. Use their answers to write a stronger, fully tailored resume. Keep all claims truthful and grounded in what the candidate actually said.\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
+  const system = `You are an expert ATS resume optimizer. Here is the candidate's base resume:\n\n${resume}\n\nThe candidate previously got a job description and answered clarifying questions to address experience gaps. Use their answers to write a stronger, fully tailored resume. Keep all claims truthful and grounded in what the candidate actually said.\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
 
   try {
     const raw = await callAI(system, `Job description:\n${currentJD}\n\nCandidate's additional context:\n${answers}`, 6000);
@@ -556,7 +605,12 @@ coverGenerateBtn.addEventListener('click', async () => {
   coverResults.style.display = 'none';
   coverLoading.style.display = 'flex';
 
-  const system = `You are an expert career writer. Here is the candidate's resume:\n\n${getBaseResume()}\n\nWrite a compelling, specific, truthful cover letter (3-4 paragraphs) tailored to the job description provided. Reference concrete achievements from the resume that map to the role's requirements. Avoid generic filler. Do not fabricate experience not present in the resume. Output ONLY the cover letter text (no JSON, no markdown, no preamble) — start directly with the salutation.`;
+  // Strip HTML tags for the AI
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = getBaseResume();
+  const resume = tempDiv.textContent || tempDiv.innerText || '';
+  
+  const system = `You are an expert career writer. Here is the candidate's resume:\n\n${resume}\n\nWrite a compelling, specific, truthful cover letter (3-4 paragraphs) tailored to the job description provided. Reference concrete achievements from the resume that map to the role's requirements. Avoid generic filler. Do not fabricate experience not present in the resume. Output ONLY the cover letter text (no JSON, no markdown, no preamble) — start directly with the salutation.`;
 
   let userMsg = 'Job description:\n\n' + jd;
   if (company) userMsg += '\n\nCompany name: ' + company;

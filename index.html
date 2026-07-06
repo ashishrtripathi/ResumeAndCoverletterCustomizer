@@ -5,11 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Resume ATS Optimizer — Ashish Tripathi</title>
 <link rel="stylesheet" href="styles.css">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.2.3/docx.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 </head>
 <body>
 
@@ -178,8 +180,8 @@
     <!-- TAB: PROFILE -->
     <section id="tab-profile" class="tab-panel">
       <div class="card">
-        <label for="resume-edit">Your base resume</label>
-        <p class="muted small">This is what gets tailored for every job posting. Paste your resume text below, or upload a file.</p>
+        <label>Your base resume</label>
+        <p class="muted small">This is what gets tailored for every job posting. Upload a file or paste your resume - formatting will be preserved.</p>
         
         <div class="upload-area" id="resume-upload-area">
           <input type="file" id="resume-file-input" accept=".txt,.doc,.docx,.pdf" style="display:none">
@@ -187,7 +189,8 @@
           <span class="muted small" style="margin-left: 8px">(.txt, .doc, .docx, .pdf)</span>
         </div>
         
-        <textarea id="resume-edit" rows="24" placeholder="Paste your resume text here..."></textarea>
+        <div id="resume-editor"></div>
+        <textarea id="resume-edit" style="display:none"></textarea>
         <div class="actions-row">
           <span class="muted small">Auto-saves every 5 seconds</span>
           <button id="save-resume-btn" class="btn-primary" style="margin-left: auto;">Save now</button>
