@@ -62,7 +62,8 @@ async function callGemini(system, userMsg, maxTokens) {
         parts: [{ text: system }]
       },
       generationConfig: {
-        maxOutputTokens: maxTokens || 3000
+        maxOutputTokens: maxTokens || 8000,
+        temperature: 0.7
       }
     })
   });
@@ -77,27 +78,37 @@ async function callGemini(system, userMsg, maxTokens) {
   }
 
   const data = await res.json();
+  console.log('Gemini raw response:', data);
   
   // Handle different response formats
-  if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
-    const text = data.candidates[0].content.parts.map(p => p.text || '').join('');
-    if (text) return text;
-  }
-  
-  // Response with no text content but valid response (e.g. empty parts)
   if (data.candidates && data.candidates[0]) {
     const candidate = data.candidates[0];
-    if (candidate.finishReason === 'MAX_TOKENS') {
-      return ''; // Key is valid but response was truncated
-    }
+    
+    // Check for safety blocking
     if (candidate.finishReason === 'SAFETY') {
-      throw new Error('Response was blocked by safety filters.');
+      throw new Error('Response was blocked by safety filters. Try rephrasing your input.');
+    }
+    
+    // Check for content
+    if (candidate.content && candidate.content.parts) {
+      const text = candidate.content.parts.map(p => p.text || '').join('');
+      if (text) return text;
+    }
+    
+    // MAX_TOKENS - response was truncated
+    if (candidate.finishReason === 'MAX_TOKENS') {
+      // Try to get whatever text we have
+      if (candidate.content && candidate.content.parts) {
+        const partialText = candidate.content.parts.map(p => p.text || '').join('');
+        if (partialText) return partialText;
+      }
+      throw new Error('Response was cut off due to length. Please try with a shorter job description or resume.');
     }
   }
   
-  // If we got a response but in unexpected format, log it for debugging
-  console.log('Gemini API response:', JSON.stringify(data, null, 2));
-  throw new Error('Unexpected response format from Gemini API. Check console for details.');
+  // If we got a response but in unexpected format
+  console.log('Unexpected Gemini response format:', JSON.stringify(data, null, 2));
+  throw new Error('Unexpected response from Gemini API. Please try again.');
 }
 
 async function callAI(system, userMsg, maxTokens) {
@@ -110,6 +121,10 @@ async function callAI(system, userMsg, maxTokens) {
 }
 
 function parseJSON(raw) {
+  if (!raw || raw.trim().length === 0) {
+    throw new Error('Empty response from AI. Please try again.');
+  }
+  
   // Try to extract JSON from the response - handle markdown fences and other text
   let jsonStr = raw;
   
@@ -131,34 +146,79 @@ function parseJSON(raw) {
   try {
     return JSON.parse(jsonStr);
   } catch (e) {
-    // If parsing fails, try to fix common issues
-    console.log('JSON parse error, attempting to fix...', e);
-    console.log('Raw response:', raw);
+    console.log('JSON parse error:', e);
+    console.log('Attempting to fix JSON...');
     
-    // Try to find and fix truncated JSON
-    try {
-      // Find the last complete key-value pair
-      const lastComplete = jsonStr.lastIndexOf('",');
-      if (lastComplete > 0) {
-        const fixed = jsonStr.substring(0, lastComplete + 2) + '}';
-        return JSON.parse(fixed);
+    // Try multiple fix strategies
+    const fixes = [
+      // Fix 1: Find last complete key-value pair
+      () => {
+        const lastComplete = jsonStr.lastIndexOf('",');
+        if (lastComplete > 0) {
+          return jsonStr.substring(0, lastComplete + 2) + '}';
+        }
+        return null;
+      },
+      // Fix 2: Find last closing brace
+      () => {
+        const lastBrace = jsonStr.lastIndexOf('}');
+        if (lastBrace > 0) {
+          return jsonStr.substring(0, lastBrace + 1);
+        }
+        return null;
+      },
+      // Fix 3: Try to close any open strings
+      () => {
+        let fixed = jsonStr;
+        // Count open and close quotes
+        const openQuotes = (fixed.match(/"/g) || []).length;
+        if (openQuotes % 2 !== 0) {
+          fixed = fixed + '"';
+        }
+        // Try to close any open braces
+        const openBraces = (fixed.match(/{/g) || []).length;
+        const closeBraces = (fixed.match(/}/g) || []).length;
+        for (let i = 0; i < openBraces - closeBraces; i++) {
+          fixed = fixed + '}';
+        }
+        return fixed;
+      },
+      // Fix 4: Extract just the score and note if we can
+      () => {
+        const scoreMatch = jsonStr.match(/"score"\s*:\s*(\d+)/);
+        const noteMatch = jsonStr.match(/"score_note"\s*:\s*"([^"]*)"/);
+        if (scoreMatch) {
+          return JSON.stringify({
+            score: parseInt(scoreMatch[1]),
+            score_note: noteMatch ? noteMatch[1] : 'Analysis complete',
+            matched_keywords: [],
+            missing_keywords: [],
+            needs_clarification: false,
+            questions: [],
+            alignment_warning: '',
+            customized_resume: 'Unable to generate full resume. The response was truncated.',
+            change_summary: 'Response was truncated during generation.'
+          });
+        }
+        return null;
       }
-    } catch (e2) {
-      // Ignore
+    ];
+    
+    for (const fix of fixes) {
+      try {
+        const fixed = fix();
+        if (fixed) {
+          const parsed = JSON.parse(fixed);
+          console.log('Successfully fixed JSON');
+          return parsed;
+        }
+      } catch (e2) {
+        // Continue to next fix
+      }
     }
     
-    // Try a more aggressive fix - find the last closing brace
-    try {
-      const lastBrace = jsonStr.lastIndexOf('}');
-      if (lastBrace > 0) {
-        const fixed = jsonStr.substring(0, lastBrace + 1);
-        return JSON.parse(fixed);
-      }
-    } catch (e3) {
-      // Ignore
-    }
-    
-    throw new Error('Failed to parse AI response. The response may be truncated. Please try again with a shorter job description.');
+    console.log('All JSON fixes failed. Raw response:', raw);
+    throw new Error('Could not parse AI response. The job description may be too long. Please try with a shorter one (under 5000 characters).');
   }
 }
 
@@ -438,6 +498,17 @@ jdInput.addEventListener('input', () => {
   const n = jdInput.value.trim().length;
   charCount.textContent = n > 0 ? n + ' characters' : '';
   
+  // Add warning for long job descriptions
+  if (n > 5000) {
+    charCount.textContent += ' (may cause truncation)';
+    charCount.style.color = '#a32d2d';
+  } else if (n > 3000) {
+    charCount.textContent += ' (long description)';
+    charCount.style.color = '#7a5000';
+  } else {
+    charCount.style.color = '';
+  }
+  
   // Auto-copy job description to cover letter tab
   if (jdInput.value.trim()) {
     coverJdInput.value = jdInput.value;
@@ -488,7 +559,7 @@ analyzeBtn.addEventListener('click', async () => {
   const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume. If the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
 
   try {
-    const raw = await callAI(system, 'Job description:\n\n' + jd, 6000);
+    const raw = await callAI(system, 'Job description:\n\n' + jd, 8000);
     const data = parseJSON(raw);
     renderResults(data);
   } catch (e) {
@@ -513,7 +584,7 @@ document.getElementById('regenerate-btn').addEventListener('click', async () => 
   const system = `You are an expert ATS resume optimizer. Here is the candidate's base resume:\n\n${resume}\n\nThe candidate previously got a job description and answered clarifying questions to address experience gaps. Use their answers to write a stronger, fully tailored resume. Keep all claims truthful and grounded in what the candidate actually said.\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
 
   try {
-    const raw = await callAI(system, `Job description:\n${currentJD}\n\nCandidate's additional context:\n${answers}`, 6000);
+    const raw = await callAI(system, `Job description:\n${currentJD}\n\nCandidate's additional context:\n${answers}`, 8000);
     const data = parseJSON(raw);
     renderResults(data);
   } catch (e) {
