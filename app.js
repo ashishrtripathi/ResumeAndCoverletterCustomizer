@@ -498,10 +498,10 @@ jdInput.addEventListener('input', () => {
   const n = jdInput.value.trim().length;
   charCount.textContent = n > 0 ? n + ' characters' : '';
   
-  // Add warning for long job descriptions
-  if (n > 5000) {
-    charCount.textContent += ' (may cause truncation)';
-    charCount.style.color = '#a32d2d';
+  // Add info for long job descriptions
+  if (n > 4000) {
+    charCount.textContent += ' (will be processed in chunks)';
+    charCount.style.color = '#1d4d8f';
   } else if (n > 3000) {
     charCount.textContent += ' (long description)';
     charCount.style.color = '#7a5000';
@@ -556,11 +556,21 @@ analyzeBtn.addEventListener('click', async () => {
   
   setAnalyzeLoading('Analyzing job description and matching keywords...');
 
-  const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume. If the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
-
   try {
-    const raw = await callAI(system, 'Job description:\n\n' + jd, 8000);
-    const data = parseJSON(raw);
+    let data;
+    
+    // If job description is long, process in chunks
+    if (jd.length > 4000) {
+      data = await analyzeInChunks(jd, resume);
+    } else {
+      // Short job description - process normally
+      const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume. If the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
+      
+      setAnalyzeLoading('Analyzing job description...');
+      const raw = await callAI(system, 'Job description:\n\n' + jd, 8000);
+      data = parseJSON(raw);
+    }
+    
     renderResults(data);
   } catch (e) {
     viewLoading.style.display = 'none';
@@ -568,6 +578,120 @@ analyzeBtn.addEventListener('click', async () => {
     showErr(errorBox, 'Something went wrong: ' + e.message);
   }
 });
+
+// Analyze long job descriptions in chunks
+async function analyzeInChunks(jd, resume) {
+  const chunkSize = 3500; // Characters per chunk
+  const chunks = [];
+  
+  // Split by paragraphs first, then by chunk size
+  const paragraphs = jd.split(/\n\s*\n/);
+  let currentChunk = '';
+  
+  for (const para of paragraphs) {
+    if (currentChunk.length + para.length > chunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk);
+      currentChunk = para;
+    } else {
+      currentChunk += (currentChunk ? '\n\n' : '') + para;
+    }
+  }
+  if (currentChunk) chunks.push(currentChunk);
+  
+  // If still too large, split by sentences
+  const finalChunks = [];
+  for (const chunk of chunks) {
+    if (chunk.length > chunkSize) {
+      const sentences = chunk.split(/(?<=[.!?])\s+/);
+      let subChunk = '';
+      for (const sent of sentences) {
+        if (subChunk.length + sent.length > chunkSize && subChunk.length > 0) {
+          finalChunks.push(subChunk);
+          subChunk = sent;
+        } else {
+          subChunk += (subChunk ? ' ' : '') + sent;
+        }
+      }
+      if (subChunk) finalChunks.push(subChunk);
+    } else {
+      finalChunks.push(chunk);
+    }
+  }
+  
+  setAnalyzeLoading(`Processing ${finalChunks.length} sections of job description...`);
+  
+  // Analyze each chunk
+  const allKeywords = { matched: [], missing: [] };
+  let totalScore = 0;
+  let chunkCount = 0;
+  
+  for (let i = 0; i < finalChunks.length; i++) {
+    setAnalyzeLoading(`Analyzing section ${i + 1} of ${finalChunks.length}...`);
+    
+    const system = `You are an expert ATS keyword analyzer. Extract keywords from this job description section and match them against the resume. Return ONLY a JSON object with this exact format:
+{
+  "matched_keywords": ["keyword1", "keyword2"],
+  "missing_keywords": ["keyword1", "keyword2"],
+  "score": <integer 0-100 based on how well resume matches this section>
+}
+
+Resume:
+${resume}
+
+Job description section ${i + 1} of ${finalChunks.length}:`;
+    
+    try {
+      const raw = await callAI(system, finalChunks[i], 2000);
+      const chunkResult = parseJSON(raw);
+      
+      if (chunkResult.matched_keywords) allKeywords.matched.push(...chunkResult.matched_keywords);
+      if (chunkResult.missing_keywords) allKeywords.missing.push(...chunkResult.missing_keywords);
+      if (chunkResult.score) {
+        totalScore += chunkResult.score;
+        chunkCount++;
+      }
+    } catch (e) {
+      console.log(`Chunk ${i + 1} failed:`, e);
+      // Continue with other chunks
+    }
+  }
+  
+  // Deduplicate keywords
+  allKeywords.matched = [...new Set(allKeywords.matched)];
+  allKeywords.missing = [...new Set(allKeywords.missing)];
+  
+  // Remove keywords that appear in both (they're matched)
+  allKeywords.missing = allKeywords.missing.filter(k => !allKeywords.matched.includes(k));
+  
+  const avgScore = chunkCount > 0 ? Math.round(totalScore / chunkCount) : 50;
+  
+  setAnalyzeLoading('Generating customized resume...');
+  
+  // Now generate the full resume with all keywords
+  const generateSystem = `You are an expert ATS resume optimizer. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the COMPLETE job description below and rewrite the resume tailored to this specific job. Use the following pre-analyzed keywords to guide your optimization:
+
+MATCHED KEYWORDS (already in resume): ${allKeywords.matched.join(', ')}
+MISSING KEYWORDS (need to be added): ${allKeywords.missing.join(', ')}
+OVERALL ATS SCORE: ${avgScore}/100
+
+Rewrite the resume to:
+1. Emphasize experience related to the matched keywords
+2. Naturally incorporate missing keywords where truthful
+3. Reorder bullets to surface most relevant experience
+4. Keep all claims truthful and supported by the base resume
+
+${ANALYZE_SCHEMA_INSTRUCTIONS}`;
+
+  const raw = await callAI(generateSystem, 'Complete job description:\n\n' + jd, 8000);
+  const finalResult = parseJSON(raw);
+  
+  // Override with our calculated values
+  finalResult.score = avgScore;
+  finalResult.matched_keywords = allKeywords.matched;
+  finalResult.missing_keywords = allKeywords.missing;
+  
+  return finalResult;
+}
 
 document.getElementById('regenerate-btn').addEventListener('click', async () => {
   const answers = document.getElementById('answers-input').value.trim();
