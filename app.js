@@ -147,7 +147,18 @@ function parseJSON(raw) {
       // Ignore
     }
     
-    throw new Error('Failed to parse AI response. Please try again.');
+    // Try a more aggressive fix - find the last closing brace
+    try {
+      const lastBrace = jsonStr.lastIndexOf('}');
+      if (lastBrace > 0) {
+        const fixed = jsonStr.substring(0, lastBrace + 1);
+        return JSON.parse(fixed);
+      }
+    } catch (e3) {
+      // Ignore
+    }
+    
+    throw new Error('Failed to parse AI response. The response may be truncated. Please try again with a shorter job description.');
   }
 }
 
@@ -434,7 +445,7 @@ analyzeBtn.addEventListener('click', async () => {
   const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${getBaseResume()}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume. If the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
 
   try {
-    const raw = await callAI(system, 'Job description:\n\n' + jd, 4000);
+    const raw = await callAI(system, 'Job description:\n\n' + jd, 6000);
     const data = parseJSON(raw);
     renderResults(data);
   } catch (e) {
@@ -453,7 +464,7 @@ document.getElementById('regenerate-btn').addEventListener('click', async () => 
   const system = `You are an expert ATS resume optimizer. Here is the candidate's base resume:\n\n${getBaseResume()}\n\nThe candidate previously got a job description and answered clarifying questions to address experience gaps. Use their answers to write a stronger, fully tailored resume. Keep all claims truthful and grounded in what the candidate actually said.\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
 
   try {
-    const raw = await callAI(system, `Job description:\n${currentJD}\n\nCandidate's additional context:\n${answers}`, 4000);
+    const raw = await callAI(system, `Job description:\n${currentJD}\n\nCandidate's additional context:\n${answers}`, 6000);
     const data = parseJSON(raw);
     renderResults(data);
   } catch (e) {
