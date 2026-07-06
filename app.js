@@ -1054,202 +1054,218 @@ function downloadPDF(text, filename) {
 }
 
 function downloadDOCX(text, filename, isResume = false) {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
-  
-  // Common section headings
-  const sectionHeadings = [
-    'PROFESSIONAL SUMMARY', 'SUMMARY', 'EXPERIENCE', 'WORK EXPERIENCE', 
-    'EDUCATION', 'SKILLS', 'TECHNICAL SKILLS', 'CORE COMPETENCIES',
-    'CERTIFICATIONS', 'PROJECTS', 'ACHIEVEMENTS', 'ADDITIONAL INFORMATION'
-  ];
-  
-  const lines = text.split('\n');
-  const paragraphs = lines.map((line, index) => {
-    const trimmedLine = line.trim();
+  try {
+    const docxLib = window.docx;
+    const { Document, Packer, Paragraph, TextRun } = docxLib;
+    const AlignmentType = docxLib.AlignmentType || { CENTER: 'center' };
+    const HeadingLevel = docxLib.HeadingLevel || { HEADING_1: 'heading1' };
     
-    // Check if line is a section heading
-    const isSectionHeading = sectionHeadings.some(h => 
-      trimmedLine.toUpperCase().replace(/[:.]/g, '') === h
-    );
-    
-    // Check if line is a bullet point
-    const isBullet = /^[•\-*]\s/.test(trimmedLine);
-    
-    // Check if line is a name (first line, usually capitalized)
-    const isName = index === 0 && /^[A-Z\s]+$/.test(trimmedLine) && trimmedLine.length > 2;
-    
-    let runs = [];
-    let paragraphOptions = {};
-    
-    if (isResume) {
-      if (isSectionHeading) {
-        // Section headings - bold, uppercase, spacing
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            bold: true,
-            font: 'Arial',
-            size: 26, // 13pt
-            color: '000000',
-          }),
-        ];
-        paragraphOptions = {
-          spacing: { before: 240, after: 120 },
-          border: { bottom: { color: '999999', style: 'single', size: 1, space: 1 } },
-        };
-      } else if (isBullet) {
-        // Bullet points with proper indentation
-        runs = [
-          new TextRun({
-            text: trimmedLine.replace(/^[•\-*]\s/, ''),
-            font: 'Arial',
-            size: 24, // 12pt
-          }),
-        ];
-        paragraphOptions = {
-          bullet: { level: 0 },
-          spacing: { before: 60, after: 60 },
-          indent: { left: 720 }, // 0.5 inch
-        };
-      } else if (isName) {
-        // Name line - larger, bold, centered
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            bold: true,
-            font: 'Arial',
-            size: 32, // 16pt
-          }),
-        ];
-        paragraphOptions = {
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 200 },
-        };
-      } else if (/^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(trimmedLine)) {
-        // Phone number - keep on same line as name if possible
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            font: 'Arial',
-            size: 24,
-          }),
-        ];
-        paragraphOptions = {
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 60 },
-        };
-      } else if (trimmedLine.includes('@') && trimmedLine.includes('.')) {
-        // Email - center it
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            font: 'Arial',
-            size: 24,
-          }),
-        ];
-        paragraphOptions = {
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 60 },
-        };
-      } else if (/^[A-Za-z]+,\s*[A-Z]{2}\s+\d{5}/.test(trimmedLine) || /^[A-Za-z]+,\s*[A-Z]{2}$/.test(trimmedLine)) {
-        // Location - center it
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            font: 'Arial',
-            size: 24,
-          }),
-        ];
-        paragraphOptions = {
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 120 },
-        };
-      } else if (/^\d{4}\s*[-–]\s*(?:Present|Current|\d{4})/.test(trimmedLine) || /^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(trimmedLine)) {
-        // Date range - bold
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            bold: true,
-            font: 'Arial',
-            size: 24,
-          }),
-        ];
-        paragraphOptions = {
-          spacing: { before: 120, after: 60 },
-        };
-      } else if (/^(?:Senior|Junior|Lead|Staff|Principal|Director|Manager|Engineer|Developer|Analyst|Specialist|Coordinator|Associate)/.test(trimmedLine) && trimmedLine.length < 80) {
-        // Job title - bold
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            bold: true,
-            font: 'Arial',
-            size: 24,
-          }),
-        ];
-        paragraphOptions = {
-          spacing: { before: 120, after: 60 },
-        };
-      } else {
-        // Regular text
-        runs = [
-          new TextRun({
-            text: trimmedLine,
-            font: 'Arial',
-            size: 24,
-          }),
-        ];
-        paragraphOptions = {
-          spacing: { after: 60 },
-        };
-      }
-    } else {
-      // Non-resume (cover letter) - simpler formatting
-      runs = [
-        new TextRun({
-          text: trimmedLine,
-          font: 'Arial',
-          size: 24,
-        }),
-      ];
+    if (!Document || !Packer || !Paragraph || !TextRun) {
+      console.error('docx library not loaded properly:', { Document, Packer, Paragraph, TextRun });
+      alert('DOCX library not loaded. Please refresh the page and try again.');
+      return;
     }
     
-    return new Paragraph({
-      children: runs,
-      ...paragraphOptions,
+    // Common section headings
+    const sectionHeadings = [
+      'PROFESSIONAL SUMMARY', 'SUMMARY', 'EXPERIENCE', 'WORK EXPERIENCE', 
+      'EDUCATION', 'SKILLS', 'TECHNICAL SKILLS', 'CORE COMPETENCIES',
+      'CERTIFICATIONS', 'PROJECTS', 'ACHIEVEMENTS', 'ADDITIONAL INFORMATION'
+    ];
+    
+    const lines = text.split('\n');
+    const paragraphs = lines.map((line, index) => {
+      const trimmedLine = line.trim();
+      
+      // Check if line is a section heading
+      const isSectionHeading = sectionHeadings.some(h => 
+        trimmedLine.toUpperCase().replace(/[:.]/g, '') === h
+      );
+      
+      // Check if line is a bullet point
+      const isBullet = /^[•\-*]\s/.test(trimmedLine);
+      
+      // Check if line is a name (first line, usually capitalized)
+      const isName = index === 0 && /^[A-Z\s]+$/.test(trimmedLine) && trimmedLine.length > 2;
+      
+      let runs = [];
+      let paragraphOptions = {};
+      
+      if (isResume) {
+        if (isSectionHeading) {
+          // Section headings - bold, uppercase, spacing
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              bold: true,
+              font: 'Arial',
+              size: 26, // 13pt
+              color: '000000',
+            }),
+          ];
+          paragraphOptions = {
+            spacing: { before: 240, after: 120 },
+          };
+        } else if (isBullet) {
+          // Bullet points with proper indentation
+          runs = [
+            new TextRun({
+              text: trimmedLine.replace(/^[•\-*]\s/, ''),
+              font: 'Arial',
+              size: 24, // 12pt
+            }),
+          ];
+          paragraphOptions = {
+            bullet: { level: 0 },
+            spacing: { before: 60, after: 60 },
+            indent: { left: 720 }, // 0.5 inch
+          };
+        } else if (isName) {
+          // Name line - larger, bold, centered
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              bold: true,
+              font: 'Arial',
+              size: 32, // 16pt
+            }),
+          ];
+          paragraphOptions = {
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 200 },
+          };
+        } else if (/^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(trimmedLine)) {
+          // Phone number - keep on same line as name if possible
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              font: 'Arial',
+              size: 24,
+            }),
+          ];
+          paragraphOptions = {
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 60 },
+          };
+        } else if (trimmedLine.includes('@') && trimmedLine.includes('.')) {
+          // Email - center it
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              font: 'Arial',
+              size: 24,
+            }),
+          ];
+          paragraphOptions = {
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 60 },
+          };
+        } else if (/^[A-Za-z]+,\s*[A-Z]{2}\s+\d{5}/.test(trimmedLine) || /^[A-Za-z]+,\s*[A-Z]{2}$/.test(trimmedLine)) {
+          // Location - center it
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              font: 'Arial',
+              size: 24,
+            }),
+          ];
+          paragraphOptions = {
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 120 },
+          };
+        } else if (/^\d{4}\s*[-–]\s*(?:Present|Current|\d{4})/.test(trimmedLine) || /^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(trimmedLine)) {
+          // Date range - bold
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              bold: true,
+              font: 'Arial',
+              size: 24,
+            }),
+          ];
+          paragraphOptions = {
+            spacing: { before: 120, after: 60 },
+          };
+        } else if (/^(?:Senior|Junior|Lead|Staff|Principal|Director|Manager|Engineer|Developer|Analyst|Specialist|Coordinator|Associate)/.test(trimmedLine) && trimmedLine.length < 80) {
+          // Job title - bold
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              bold: true,
+              font: 'Arial',
+              size: 24,
+            }),
+          ];
+          paragraphOptions = {
+            spacing: { before: 120, after: 60 },
+          };
+        } else {
+          // Regular text
+          runs = [
+            new TextRun({
+              text: trimmedLine,
+              font: 'Arial',
+              size: 24,
+            }),
+          ];
+          paragraphOptions = {
+            spacing: { after: 60 },
+          };
+        }
+      } else {
+        // Non-resume (cover letter) - simpler formatting
+        runs = [
+          new TextRun({
+            text: trimmedLine,
+            font: 'Arial',
+            size: 24,
+          }),
+        ];
+      }
+      
+      return new Paragraph({
+        children: runs,
+        ...paragraphOptions,
+      });
     });
-  });
-  
-  const doc = new Document({
-    sections: [{
-      properties: {
-        page: {
-          margin: {
-            top: 720,    // 0.75 inch
-            right: 720,
-            bottom: 720,
-            left: 720,
+    
+    const doc = new Document({
+      sections: [{
+        properties: {
+          page: {
+            margin: {
+              top: 720,    // 0.75 inch
+              right: 720,
+              bottom: 720,
+              left: 720,
+            },
           },
         },
-      },
-      children: paragraphs,
-    }],
-  });
-  
-  Packer.toBlob(doc).then(blob => {
-    if (window.saveAs) {
-      saveAs(blob, filename);
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-  });
+        children: paragraphs,
+      }],
+    });
+    
+    Packer.toBlob(doc).then(blob => {
+      if (window.saveAs) {
+        saveAs(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    }).catch(err => {
+      console.error('Error packing DOCX:', err);
+      alert('Error creating DOCX file. Please try again.');
+    });
+  } catch (err) {
+    console.error('Error in downloadDOCX:', err);
+    alert('Error creating DOCX file: ' + err.message);
+  }
 }
 
 function escapeHtml(str) {
