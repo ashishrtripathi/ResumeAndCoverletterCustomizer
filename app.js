@@ -760,30 +760,110 @@ Job description section ${i + 1} of ${finalChunks.length}:`;
   
   setAnalyzeLoading('Generating customized resume...');
   
-  // Now generate the full resume with all keywords
-  const generateSystem = `You are an expert ATS resume optimizer. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the COMPLETE job description below and rewrite the resume tailored to this specific job. Use the following pre-analyzed keywords to guide your optimization:
-
-MATCHED KEYWORDS (already in resume): ${allKeywords.matched.join(', ')}
-MISSING KEYWORDS (need to be added): ${allKeywords.missing.join(', ')}
-OVERALL ATS SCORE: ${avgScore}/100
-
-Rewrite the resume to:
-1. Emphasize experience related to the matched keywords
-2. Naturally incorporate missing keywords where truthful
-3. Reorder bullets to surface most relevant experience
-4. Keep all claims truthful and supported by the base resume
-
-${ANALYZE_SCHEMA_INSTRUCTIONS}`;
-
-  const raw = await callAI(generateSystem, 'Complete job description:\n\n' + jd, 8000);
-  const finalResult = parseJSON(raw);
+  // Generate the full resume with all keywords in chunks
+  const resumeChunks = await generateResumeInChunks(jd, resume, allKeywords, avgScore);
   
-  // Override with our calculated values
-  finalResult.score = avgScore;
-  finalResult.matched_keywords = allKeywords.matched;
-  finalResult.missing_keywords = allKeywords.missing;
+  const finalResult = {
+    score: avgScore,
+    score_note: `Analyzed ${finalChunks.length} sections of job description`,
+    matched_keywords: allKeywords.matched,
+    missing_keywords: allKeywords.missing,
+    needs_clarification: avgScore < 55,
+    questions: avgScore < 55 ? ['Consider highlighting more relevant experience for this role'] : [],
+    alignment_warning: avgScore < 55 ? 'Low alignment score - consider tailoring your resume more' : '',
+    customized_resume: resumeChunks,
+    change_summary: `Matched ${allKeywords.matched.length} keywords, added ${allKeywords.missing.length} new keywords`
+  };
   
   return finalResult;
+}
+
+// Generate resume in chunks to avoid truncation
+async function generateResumeInChunks(jd, resume, keywords, score) {
+  const resumeSections = splitResumeIntoSections(resume);
+  const generatedSections = [];
+  
+  // Common sections to generate
+  const sectionsToGenerate = [
+    { name: 'HEADER', prompt: 'Generate a professional header with contact information placeholder' },
+    { name: 'SUMMARY', prompt: 'Write a 2-3 sentence executive summary tailored to this job' },
+    { name: 'SKILLS', prompt: 'Create a skills section with relevant technical and soft skills' },
+    { name: 'EXPERIENCE', prompt: 'Rewrite the work experience section with tailored bullet points' },
+    { name: 'EDUCATION', prompt: 'Include the education section' }
+  ];
+  
+  for (let i = 0; i < sectionsToGenerate.length; i++) {
+    const section = sectionsToGenerate[i];
+    setAnalyzeLoading(`Generating ${section.name.toLowerCase()} (${i + 1}/${sectionsToGenerate.length})...`);
+    
+    const system = `You are an expert resume writer. Generate ONLY the ${section.name} section of a resume.
+
+Job Description Keywords to include: ${keywords.matched.join(', ')}
+Keywords to add: ${keywords.missing.join(', ')}
+
+Original Resume:
+${resume}
+
+Task: ${section.prompt}
+
+Rules:
+- Use plain text formatting (no markdown)
+- Use capital letters for section headers
+- Use bullet points with hyphens (-)
+- Keep it concise and impactful
+- Naturally incorporate relevant keywords
+- Be truthful to the original resume
+
+Return ONLY the ${section.name} section text, nothing else.`;
+
+    try {
+      const raw = await callAI(system, `Generate the ${section.name} section for this job:\n\n${jd.substring(0, 2000)}`, 3000);
+      generatedSections.push(raw.trim());
+    } catch (e) {
+      console.log(`Failed to generate ${section.name}:`, e);
+      // Use original section if available
+      if (resumeSections[section.name]) {
+        generatedSections.push(resumeSections[section.name]);
+      }
+    }
+  }
+  
+  return generatedSections.join('\n\n');
+}
+
+// Split resume into logical sections
+function splitResumeIntoSections(resume) {
+  const sections = {};
+  const lines = resume.split('\n');
+  let currentSection = 'HEADER';
+  let currentContent = [];
+  
+  const sectionPatterns = [
+    /^EXECUTIVE SUMMARY|^SUMMARY|^PROFESSIONAL SUMMARY|^OBJECTIVE/i,
+    /^CORE SKILLS|^SKILLS|^TECHNICAL SKILLS|^COMPETENCIES/i,
+    /^PROFESSIONAL EXPERIENCE|^EXPERIENCE|^WORK EXPERIENCE/i,
+    /^EDUCATION|^ACADEMIC/i,
+    /^CERTIFICATIONS|^LICENSES/i,
+    /^PROJECTS/i
+  ];
+  
+  for (const line of lines) {
+    const isSectionHeader = sectionPatterns.some(pattern => pattern.test(line.trim()));
+    
+    if (isSectionHeader && currentContent.length > 0) {
+      sections[currentSection] = currentContent.join('\n');
+      currentSection = line.trim().replace(/[:]+$/, '').toUpperCase();
+      currentContent = [];
+    } else {
+      currentContent.push(line);
+    }
+  }
+  
+  if (currentContent.length > 0) {
+    sections[currentSection] = currentContent.join('\n');
+  }
+  
+  return sections;
 }
 
 document.getElementById('regenerate-btn').addEventListener('click', async () => {
