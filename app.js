@@ -492,20 +492,32 @@ quill.on('text-change', () => {
 });
 
 // Initialize Quill editor for resume output (customized resume)
-const resumeOutQuill = new Quill('#resume-out', {
-  theme: 'snow',
-  placeholder: 'Your customized resume will appear here...',
-  modules: {
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'indent': '-1'}, { 'indent': '+1' }],
-      ['link'],
-      ['clean']
-    ]
-  }
-});
+let resumeOutQuill;
+try {
+  resumeOutQuill = new Quill('#resume-out', {
+    theme: 'snow',
+    placeholder: 'Your customized resume will appear here...',
+    modules: {
+      toolbar: [
+        [{ 'header': [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+        [{ 'indent': '-1'}, { 'indent': '+1' }],
+        ['link'],
+        ['clean']
+      ]
+    }
+  });
+} catch (e) {
+  console.error('Failed to initialize resume Quill editor:', e);
+  // Fallback: use a simple textarea
+  document.getElementById('resume-out').innerHTML = '<textarea id="resume-out-fallback" style="width:100%;min-height:300px;font-family:Arial;font-size:12.5px;padding:10px;"></textarea>';
+  resumeOutQuill = {
+    root: document.getElementById('resume-out-fallback'),
+    getText: () => document.getElementById('resume-out-fallback').value,
+    root: { innerHTML: '' }
+  };
+}
 
 // Save button
 saveResumeBtn.addEventListener('click', () => {
@@ -1003,7 +1015,12 @@ function renderResults(d) {
   }
 
   // Set content in Quill editor (preserves formatting)
-  resumeOutQuill.root.innerHTML = resumeToHtml(d.customized_resume || '');
+  try {
+    resumeOutQuill.root.innerHTML = resumeToHtml(d.customized_resume || '');
+  } catch (e) {
+    console.error('Failed to set resume content:', e);
+    document.getElementById('resume-out').innerHTML = resumeToHtml(d.customized_resume || '');
+  }
   
   // Build detailed changes summary
   let changesHtml = '';
@@ -1039,20 +1056,36 @@ resetBtn.addEventListener('click', () => {
 });
 
 document.getElementById('copy-resume-btn').addEventListener('click', () => {
-  const text = resumeOutQuill.getText();
-  navigator.clipboard.writeText(text).then(() => flashBtnText('copy-resume-btn', 'Copied!'));
+  try {
+    const text = resumeOutQuill.getText();
+    navigator.clipboard.writeText(text).then(() => flashBtnText('copy-resume-btn', 'Copied!'));
+  } catch (e) {
+    console.error('Copy failed:', e);
+  }
 });
 
 document.getElementById('download-resume-txt-btn').addEventListener('click', () => {
-  downloadText(resumeOutQuill.getText(), 'Tailored_Resume.txt');
+  try {
+    downloadText(resumeOutQuill.getText(), 'Tailored_Resume.txt');
+  } catch (e) {
+    console.error('Download TXT failed:', e);
+  }
 });
 
 document.getElementById('download-resume-pdf-btn').addEventListener('click', () => {
-  downloadPDF(resumeOutQuill.getText(), 'Tailored_Resume.pdf');
+  try {
+    downloadPDF(resumeOutQuill.getText(), 'Tailored_Resume.pdf');
+  } catch (e) {
+    console.error('Download PDF failed:', e);
+  }
 });
 
 document.getElementById('download-resume-docx-btn').addEventListener('click', () => {
-  downloadDOCXFromHtml(resumeOutQuill.root.innerHTML, 'Tailored_Resume.docx');
+  try {
+    downloadDOCXFromHtml(resumeOutQuill.root.innerHTML, 'Tailored_Resume.docx');
+  } catch (e) {
+    console.error('Download DOCX failed:', e);
+  }
 });
 
 // ===== Cover Letter tab =====
