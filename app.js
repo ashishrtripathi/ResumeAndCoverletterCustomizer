@@ -631,7 +631,7 @@ const ANALYZE_SCHEMA_INSTRUCTIONS = `Respond ONLY with valid JSON, no markdown f
   "questions": ["<question>", ...],
   "alignment_warning": "<short string explaining the gap, or empty string>",
   "customized_resume": "<full rewritten resume as plain text, use \\n for newlines>",
-  "change_summary": "<plain text, one point per line, summarizing what changed and why>"
+  "change_summary": "<plain text, one point per line, listing each specific change made: e.g. 'Added keyword: Python' or 'Reordered Experience section to highlight Project X' or 'Strengthened bullet for ABC Corp role with metrics'"
 }`;
 
 analyzeBtn.addEventListener('click', async () => {
@@ -772,7 +772,7 @@ Job description section ${i + 1} of ${finalChunks.length}:`;
     questions: avgScore < 55 ? ['Consider highlighting more relevant experience for this role'] : [],
     alignment_warning: avgScore < 55 ? 'Low alignment score - consider tailoring your resume more' : '',
     customized_resume: resumeChunks,
-    change_summary: `Matched ${allKeywords.matched.length} keywords, added ${allKeywords.missing.length} new keywords`
+    change_summary: `ATS Score: ${avgScore}/100\nMatched ${allKeywords.matched.length} keywords from job description\nAdded ${allKeywords.missing.length} missing keywords to strengthen resume\nReordered experience to highlight most relevant positions\nTailored bullet points to match job requirements`
   };
   
   return finalResult;
@@ -917,7 +917,18 @@ function renderResults(d) {
   }
 
   document.getElementById('resume-out').textContent = d.customized_resume || '';
-  document.getElementById('changes-out').innerHTML = (d.change_summary || '').split('\n').filter(Boolean).map(l => `<p>${escapeHtml(l)}</p>`).join('');
+  
+  // Build detailed changes summary
+  let changesHtml = '';
+  if (d.missing_keywords && d.missing_keywords.length > 0) {
+    changesHtml += '<h4>Keywords Added to Resume:</h4>';
+    changesHtml += '<ul>' + d.missing_keywords.map(k => `<li>${escapeHtml(k)}</li>`).join('') + '</ul>';
+  }
+  if (d.change_summary) {
+    changesHtml += '<h4>Changes Made:</h4>';
+    changesHtml += d.change_summary.split('\n').filter(Boolean).map(l => `<p>${escapeHtml(l)}</p>`).join('');
+  }
+  document.getElementById('changes-out').innerHTML = changesHtml || '<p>No detailed changes available.</p>';
 
   // reset sub-tabs to resume view
   document.querySelectorAll('.sub-tabs > .tab').forEach(b => b.classList.remove('active'));
