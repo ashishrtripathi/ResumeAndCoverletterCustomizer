@@ -25,7 +25,24 @@
         <p class="tagline">Paste a job posting. Get a tailored resume, a gap analysis, and a cover letter.</p>
       </div>
     </div>
-    <button id="settings-btn" class="icon-btn" title="API key settings">⚙</button>
+    <div class="header-actions">
+      <div class="usage-display" id="usage-display">
+        <div class="usage-item">
+          <span class="usage-label">Cost</span>
+          <span class="usage-value" id="usage-cost">$0.00</span>
+        </div>
+        <div class="usage-item">
+          <span class="usage-label">Tokens</span>
+          <span class="usage-value" id="usage-tokens">0 in / 0 out</span>
+        </div>
+        <div class="usage-item">
+          <span class="usage-label">API Calls</span>
+          <span class="usage-value" id="usage-calls">0</span>
+        </div>
+        <button id="reset-usage-btn" class="icon-btn small" title="Reset usage stats">↺</button>
+      </div>
+      <button id="settings-btn" class="icon-btn" title="API key settings">⚙</button>
+    </div>
   </header>
 
   <!-- API KEY SETUP -->

@@ -2,13 +2,80 @@
 const LS_KEY_API = 'resume_app_api_key';
 const LS_KEY_RESUME = 'resume_app_base_resume';
 const LS_KEY_PROVIDER = 'resume_app_provider';
+const LS_KEY_USAGE = 'resume_app_usage';
 
 function getApiKey() { return localStorage.getItem(LS_KEY_API) || ''; }
 function setApiKey(k) { localStorage.setItem(LS_KEY_API, k); }
-function getBaseResume() { return localStorage.getItem(LS_KEY_RESUME) || DEFAULT_RESUME; }
+function getBaseResume() { return localStorage.getItem(LS_KEY_RESUME) || ''; }
 function setBaseResume(r) { localStorage.setItem(LS_KEY_RESUME, r); }
 function getProvider() { return localStorage.getItem(LS_KEY_PROVIDER) || 'claude'; }
 function setProvider(p) { localStorage.setItem(LS_KEY_PROVIDER, p); }
+
+// Usage tracking
+function getUsage() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEY_USAGE) || '{"totalInputTokens":0,"totalOutputTokens":0,"totalCost":0,"calls":0}');
+  } catch (e) {
+    return { totalInputTokens: 0, totalOutputTokens: 0, totalCost: 0, calls: 0 };
+  }
+}
+
+function saveUsage(usage) {
+  localStorage.setItem(LS_KEY_USAGE, JSON.stringify(usage));
+}
+
+function addUsage(inputTokens, outputTokens, provider) {
+  const usage = getUsage();
+  usage.totalInputTokens += inputTokens;
+  usage.totalOutputTokens += outputTokens;
+  usage.calls += 1;
+  
+  // Calculate cost based on provider
+  const cost = calculateCost(inputTokens, outputTokens, provider);
+  usage.totalCost += cost;
+  
+  saveUsage(usage);
+  updateUsageDisplay();
+  
+  return cost;
+}
+
+function calculateCost(inputTokens, outputTokens, provider) {
+  // Pricing per million tokens (as of 2024)
+  const pricing = {
+    claude: {
+      input: 3.00,   // $3 per million input tokens (Claude 3.5 Sonnet)
+      output: 15.00  // $15 per million output tokens
+    },
+    gemini: {
+      input: 0.075,  // $0.075 per million input tokens (Gemini 2.0 Flash)
+      output: 0.30   // $0.30 per million output tokens
+    }
+  };
+  
+  const rates = pricing[provider] || pricing.claude;
+  const inputCost = (inputTokens / 1_000_000) * rates.input;
+  const outputCost = (outputTokens / 1_000_000) * rates.output;
+  
+  return inputCost + outputCost;
+}
+
+function formatCost(cost) {
+  if (cost < 0.01) return '$' + cost.toFixed(4);
+  if (cost < 1) return '$' + cost.toFixed(3);
+  return '$' + cost.toFixed(2);
+}
+
+function updateUsageDisplay() {
+  const usage = getUsage();
+  const costEl = document.getElementById('usage-cost');
+  const tokensEl = document.getElementById('usage-tokens');
+  const callsEl = document.getElementById('usage-calls');
+  
+  if (costEl) costEl.textContent = formatCost(usage.totalCost);
+  if (tokensEl) tokensEl.textContent = usage.totalInputTokens.toLocaleString() + ' in / ' + usage.totalOutputTokens.toLocaleString() + ' out';
+  if (callsEl) callsEl.textContent = usage.calls;
+}
 
 // ===== API calls =====
 async function callClaude(system, userMsg, maxTokens) {
@@ -41,6 +108,12 @@ async function callClaude(system, userMsg, maxTokens) {
   }
 
   const data = await res.json();
+  
+  // Track usage
+  if (data.usage) {
+    addUsage(data.usage.input_tokens || 0, data.usage.output_tokens || 0, 'claude');
+  }
+  
   const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return text;
 }
@@ -79,6 +152,15 @@ async function callGemini(system, userMsg, maxTokens) {
 
   const data = await res.json();
   console.log('Gemini raw response:', data);
+  
+  // Track usage
+  if (data.usageMetadata) {
+    addUsage(
+      data.usageMetadata.promptTokenCount || 0,
+      data.usageMetadata.candidatesTokenCount || 0,
+      'gemini'
+    );
+  }
   
   // Handle different response formats
   if (data.candidates && data.candidates[0]) {
@@ -328,6 +410,17 @@ saveGeminiKeyBtn.addEventListener('click', async () => {
 });
 
 settingsBtn.addEventListener('click', showKeySetup);
+
+// Reset usage stats
+document.getElementById('reset-usage-btn').addEventListener('click', () => {
+  if (confirm('Reset all usage statistics?')) {
+    localStorage.removeItem(LS_KEY_USAGE);
+    updateUsageDisplay();
+  }
+});
+
+// Initialize usage display
+updateUsageDisplay();
 
 if (getApiKey()) { showApp(); } else { showKeySetup(); }
 
