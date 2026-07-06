@@ -293,6 +293,41 @@ a { color: #2a5db0; }
   font-family: "SF Mono", Consolas, monospace;
   margin: 0;
 }
+
+/* Resume Editor */
+.resume-editor {
+  font-family: Arial, Helvetica, sans-serif;
+  white-space: normal;
+  min-height: 200px;
+  cursor: text;
+}
+.resume-editor:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.resume-editor h3 {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin: 16px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #ccc;
+  color: #111;
+}
+.resume-editor ul {
+  margin: 4px 0 12px 20px;
+  padding: 0;
+}
+.resume-editor li {
+  margin-bottom: 4px;
+}
+.edit-hint {
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  margin-top: 6px;
+}
+
 .prose { font-size: 13.5px; line-height: 1.8; }
 .prose p { margin: 0 0 10px; }
 

@@ -894,6 +894,73 @@ document.getElementById('regenerate-btn').addEventListener('click', async () => 
   }
 });
 
+// Convert plain text resume to formatted HTML
+function resumeToHtml(text) {
+  if (!text) return '';
+  
+  const sectionHeadings = [
+    'PROFESSIONAL SUMMARY', 'SUMMARY', 'EXPERIENCE', 'WORK EXPERIENCE',
+    'EDUCATION', 'SKILLS', 'TECHNICAL SKILLS', 'CORE COMPETENCIES',
+    'CERTIFICATIONS', 'PROJECTS', 'ACHIEVEMENTS', 'ADDITIONAL INFORMATION'
+  ];
+  
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    if (!line) {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      continue;
+    }
+    
+    // Check if line is a section heading
+    const isSectionHeading = sectionHeadings.some(h =>
+      line.toUpperCase().replace(/[:.]/g, '') === h
+    );
+    
+    // Check if line is a bullet point
+    const isBullet = /^[•\-*]\s/.test(line);
+    
+    if (isSectionHeading) {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      html += `<h3>${escapeHtml(line)}</h3>`;
+    } else if (isBullet) {
+      if (!inList) {
+        html += '<ul>';
+        inList = true;
+      }
+      html += `<li>${escapeHtml(line.replace(/^[•\-*]\s/, ''))}</li>`;
+    } else {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+      // Check if it's a name (first line, all caps)
+      const isName = i === 0 && /^[A-Z\s]+$/.test(line) && line.length > 2;
+      if (isName) {
+        html += `<p style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:4px;">${escapeHtml(line)}</p>`;
+      } else {
+        html += `<p>${escapeHtml(line)}</p>`;
+      }
+    }
+  }
+  
+  if (inList) {
+    html += '</ul>';
+  }
+  
+  return html;
+}
+
 function renderResults(d) {
   viewLoading.style.display = 'none';
   viewResults.style.display = 'block';
@@ -916,7 +983,7 @@ function renderResults(d) {
     clarifyCard.style.display = 'none';
   }
 
-  document.getElementById('resume-out').textContent = d.customized_resume || '';
+  document.getElementById('resume-out').innerHTML = resumeToHtml(d.customized_resume || '');
   
   // Build detailed changes summary
   let changesHtml = '';
@@ -950,20 +1017,20 @@ resetBtn.addEventListener('click', () => {
 });
 
 document.getElementById('copy-resume-btn').addEventListener('click', () => {
-  const text = document.getElementById('resume-out').textContent;
+  const text = document.getElementById('resume-out').innerText;
   navigator.clipboard.writeText(text).then(() => flashBtnText('copy-resume-btn', 'Copied!'));
 });
 
 document.getElementById('download-resume-txt-btn').addEventListener('click', () => {
-  downloadText(document.getElementById('resume-out').textContent, 'Tailored_Resume.txt');
+  downloadText(document.getElementById('resume-out').innerText, 'Tailored_Resume.txt');
 });
 
 document.getElementById('download-resume-pdf-btn').addEventListener('click', () => {
-  downloadPDF(document.getElementById('resume-out').textContent, 'Tailored_Resume.pdf');
+  downloadPDF(document.getElementById('resume-out').innerText, 'Tailored_Resume.pdf');
 });
 
 document.getElementById('download-resume-docx-btn').addEventListener('click', () => {
-  downloadDOCX(document.getElementById('resume-out').textContent, 'Tailored_Resume.docx', true);
+  downloadDOCXFromHtml(document.getElementById('resume-out').innerHTML, 'Tailored_Resume.docx');
 });
 
 // ===== Cover Letter tab =====
@@ -1065,6 +1132,112 @@ function downloadPDF(text, filename) {
   }
   
   doc.save(filename);
+}
+
+// Download DOCX from HTML content (preserves formatting from editor)
+function downloadDOCXFromHtml(html, filename) {
+  try {
+    const docxLib = window.docx;
+    const { Document, Packer, Paragraph, TextRun } = docxLib;
+    const AlignmentType = docxLib.AlignmentType || { CENTER: 'center' };
+
+    if (!Document || !Packer || !Paragraph || !TextRun) {
+      alert('DOCX library not loaded. Please refresh the page and try again.');
+      return;
+    }
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+
+    const paragraphs = [];
+    const children = tempDiv.childNodes;
+
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent.trim();
+        if (text) {
+          paragraphs.push(new Paragraph({
+            children: [new TextRun({ text, font: 'Arial', size: 24 })],
+          }));
+        }
+      } else if (node.tagName === 'H3') {
+        paragraphs.push(new Paragraph({
+          children: [new TextRun({
+            text: node.textContent,
+            bold: true,
+            font: 'Arial',
+            size: 26,
+          })],
+          spacing: { before: 240, after: 120 },
+        }));
+      } else if (node.tagName === 'UL') {
+        const items = node.querySelectorAll('li');
+        items.forEach(li => {
+          paragraphs.push(new Paragraph({
+            children: [new TextRun({ text: li.textContent, font: 'Arial', size: 24 })],
+            bullet: { level: 0 },
+            indent: { left: 720 },
+            spacing: { before: 60, after: 60 },
+          }));
+        });
+      } else if (node.tagName === 'P') {
+        const isBold = node.style.fontWeight === 'bold' || node.style.fontWeight >= 600;
+        const isCentered = node.style.textAlign === 'center';
+        const fontSize = node.style.fontSize ? parseInt(node.style.fontSize) * 2 : 24;
+
+        paragraphs.push(new Paragraph({
+          children: [new TextRun({
+            text: node.textContent,
+            bold: isBold,
+            font: 'Arial',
+            size: fontSize,
+          })],
+          alignment: isCentered ? AlignmentType.CENTER : undefined,
+          spacing: { after: 60 },
+        }));
+      }
+    }
+
+    if (paragraphs.length === 0) {
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({ text: tempDiv.textContent, font: 'Arial', size: 24 })],
+      }));
+    }
+
+    const doc = new Document({
+      sections: [{
+        properties: {
+          page: {
+            margin: { top: 720, right: 720, bottom: 720, left: 720 },
+          },
+        },
+        children: paragraphs,
+      }],
+    });
+
+    Packer.toBlob(doc).then(blob => {
+      if (window.saveAs) {
+        saveAs(blob, filename);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    }).catch(err => {
+      console.error('Error packing DOCX:', err);
+      alert('Error creating DOCX file. Please try again.');
+    });
+  } catch (err) {
+    console.error('Error in downloadDOCXFromHtml:', err);
+    alert('Error creating DOCX file: ' + err.message);
+  }
 }
 
 function downloadDOCX(text, filename, isResume = false) {
