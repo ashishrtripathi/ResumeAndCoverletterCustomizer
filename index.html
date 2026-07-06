@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resume ATS Optimizer — Ashish Tripathi</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.2.3/docx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="app-header">
+    <div class="logo-row">
+      <div class="logo-mark">AT</div>
+      <div>
+        <h1>Resume ATS Optimizer</h1>
+        <p class="tagline">Paste a job posting. Get a tailored resume, a gap analysis, and a cover letter.</p>
+      </div>
+    </div>
+    <button id="settings-btn" class="icon-btn" title="API key settings">⚙</button>
+  </header>
+
+  <!-- API KEY SETUP -->
+  <section id="key-setup" class="card key-card">
+    <h2>Connect your AI API key</h2>
+    <p class="muted">This tool calls the AI API directly from your browser to analyze job postings and rewrite your resume. Your key is stored only in this browser's local storage — it is never sent anywhere except the API provider.</p>
+    
+    <div class="provider-selector">
+      <label>Select your AI provider:</label>
+      <div class="provider-options">
+        <label class="provider-option">
+          <input type="radio" name="provider" value="claude" checked>
+          <span class="provider-label">Claude (Anthropic)</span>
+        </label>
+        <label class="provider-option">
+          <input type="radio" name="provider" value="gemini">
+          <span class="provider-label">Gemini (Google)</span>
+        </label>
+      </div>
+    </div>
+
+    <div id="claude-input" class="api-key-input">
+      <label for="claude-api-key">Claude API Key</label>
+      <div class="row">
+        <input type="password" id="claude-api-key" placeholder="Enter your Anthropic API key" autocomplete="off">
+        <button id="save-claude-key-btn" class="btn-primary">Save key</button>
+      </div>
+      <p class="muted small">Don't have a key? Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com/settings/keys</a>. Usage is billed per request on your Anthropic account (typically a few cents per resume).</p>
+    </div>
+
+    <div id="gemini-input" class="api-key-input" style="display:none">
+      <label for="gemini-api-key">Gemini API Key</label>
+      <div class="row">
+        <input type="password" id="gemini-api-key" placeholder="Enter your Google AI API key" autocomplete="off">
+        <button id="save-gemini-key-btn" class="btn-primary">Save key</button>
+      </div>
+      <p class="muted small">Don't have a key? Get one at <a href="https://aistudio.google.com/app/api-keys" target="_blank" rel="noopener">aistudio.google.com/app/api-keys</a>. Usage is billed per request on your Google account (typically a few cents per resume).</p>
+    </div>
+
+    <div id="key-error" class="error-box" style="display:none"></div>
+  </section>
+
+  <!-- MAIN APP (hidden until key is set) -->
+  <main id="app-main" style="display:none">
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="analyze">Analyze & Customize</button>
+      <button class="tab" data-tab="cover">Cover Letter</button>
+      <button class="tab" data-tab="profile">My Resume</button>
+    </nav>
+
+    <!-- TAB: ANALYZE -->
+    <section id="tab-analyze" class="tab-panel active">
+      <div id="error-box" class="error-box" style="display:none"></div>
+
+      <div id="view-input" class="card">
+        <label for="jd-input">Job description</label>
+        <textarea id="jd-input" rows="12" placeholder="Paste the full job posting here — title, responsibilities, required and preferred qualifications..."></textarea>
+        <div class="actions-row">
+          <button id="analyze-btn" class="btn-primary">Analyze &amp; customize</button>
+          <span id="char-count" class="muted small"></span>
+        </div>
+      </div>
+
+      <div id="view-loading" class="card loading-card" style="display:none">
+        <div class="spinner"><span></span><span></span><span></span></div>
+        <span id="loading-msg">Analyzing job description...</span>
+      </div>
+
+      <div id="view-results" style="display:none">
+        <div class="card">
+          <div class="score-row">
+            <div class="label-sm">ATS Alignment</div>
+            <div id="score-num" class="score-num"></div>
+          </div>
+          <div class="bar"><div id="bar-fill" class="bar-fill"></div></div>
+          <p id="score-note" class="muted"></p>
+
+          <hr class="hr">
+
+          <div class="label-sm">Keyword matches</div>
+          <div id="matches" class="badge-row"></div>
+
+          <div class="label-sm" style="margin-top:14px">Missing / weak keywords</div>
+          <div id="misses" class="badge-row"></div>
+        </div>
+
+        <div id="clarify-card" class="card" style="display:none">
+          <div class="label-sm">Clarifying questions</div>
+          <div id="warn-box"></div>
+          <div id="q-list"></div>
+          <label for="answers-input" style="margin-top:14px">Your answers</label>
+          <textarea id="answers-input" rows="5" placeholder="e.g. Yes, I managed 3 product managers directly at..."></textarea>
+          <button id="regenerate-btn" class="btn-primary">Regenerate with my answers</button>
+        </div>
+
+        <div class="card">
+          <nav class="tabs sub-tabs">
+            <button class="tab active" data-subtab="resume">Customized Resume</button>
+            <button class="tab" data-subtab="changes">What Changed</button>
+          </nav>
+          <div id="sub-resume" class="sub-panel active">
+            <div class="actions-row" style="justify-content:flex-end">
+              <button id="copy-resume-btn" class="btn-secondary small">Copy text</button>
+              <button id="download-resume-txt-btn" class="btn-secondary small">Download .txt</button>
+              <button id="download-resume-pdf-btn" class="btn-secondary small">Download .pdf</button>
+              <button id="download-resume-docx-btn" class="btn-secondary small">Download .docx</button>
+            </div>
+            <pre id="resume-out" class="output-box"></pre>
+          </div>
+          <div id="sub-changes" class="sub-panel" style="display:none">
+            <div id="changes-out" class="prose"></div>
+          </div>
+        </div>
+
+        <button id="reset-btn" class="btn-secondary">← New job description</button>
+      </div>
+    </section>
+
+    <!-- TAB: COVER LETTER -->
+    <section id="tab-cover" class="tab-panel">
+      <div id="cover-error-box" class="error-box" style="display:none"></div>
+      <div class="card">
+        <label for="cover-jd-input">Job description</label>
+        <p class="muted small" id="cover-jd-note" style="display:none">Auto-filled from Analyze tab - edit if needed</p>
+        <textarea id="cover-jd-input" rows="10" placeholder="Paste the job posting here (or it will auto-fill from the Analyze tab)..."></textarea>
+        <label for="cover-company-input" style="margin-top:10px">Company name</label>
+        <input type="text" id="cover-company-input" placeholder="e.g. Instacart">
+        <label for="cover-notes-input" style="margin-top:10px">Anything specific to emphasize? (optional)</label>
+        <textarea id="cover-notes-input" rows="3" placeholder="e.g. emphasize my AI/ML work and team leadership"></textarea>
+        <div class="actions-row">
+          <button id="cover-generate-btn" class="btn-primary">Generate cover letter</button>
+        </div>
+      </div>
+
+      <div id="cover-loading" class="card loading-card" style="display:none">
+        <div class="spinner"><span></span><span></span><span></span></div>
+        <span>Writing your cover letter...</span>
+      </div>
+
+      <div id="cover-results" class="card" style="display:none">
+        <div class="actions-row" style="justify-content:flex-end">
+          <button id="copy-cover-btn" class="btn-secondary small">Copy text</button>
+          <button id="download-cover-txt-btn" class="btn-secondary small">Download .txt</button>
+          <button id="download-cover-pdf-btn" class="btn-secondary small">Download .pdf</button>
+          <button id="download-cover-docx-btn" class="btn-secondary small">Download .docx</button>
+        </div>
+        <pre id="cover-out" class="output-box"></pre>
+      </div>
+    </section>
+
+    <!-- TAB: PROFILE -->
+    <section id="tab-profile" class="tab-panel">
+      <div class="card">
+        <label for="resume-edit">Your base resume</label>
+        <p class="muted small">This is what gets tailored for every job posting. Paste your resume text below, or upload a file.</p>
+        
+        <div class="upload-area" id="resume-upload-area">
+          <input type="file" id="resume-file-input" accept=".txt,.doc,.docx,.pdf" style="display:none">
+          <button id="upload-resume-btn" class="btn-secondary" type="button">📄 Upload resume file</button>
+          <span class="muted small" style="margin-left: 8px">(.txt, .doc, .docx, .pdf)</span>
+        </div>
+        
+        <textarea id="resume-edit" rows="24" placeholder="Paste your resume text here..."></textarea>
+        <div class="actions-row">
+          <span class="muted small">Auto-saves every 5 seconds</span>
+          <button id="save-resume-btn" class="btn-primary" style="margin-left: auto;">Save now</button>
+          <span id="save-confirm" class="muted small" style="display:none">Saved ✓</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span class="muted small">Runs entirely in your browser. Your resume and API key never leave your device except to call the AI API.</span>
+  </footer>
+
+</div>
+
+<script src="resume-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
