@@ -657,7 +657,7 @@ analyzeBtn.addEventListener('click', async () => {
       data = await analyzeInChunks(jd, resume);
     } else {
       // Short job description - process normally
-      const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume. If the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
+      const system = `You are an expert ATS resume optimizer and senior recruiter. Here is the candidate's base resume:\n\n${resume}\n\nAnalyze the job description the user provides. Score ATS alignment, identify matched/missing keywords, and rewrite the resume tailored to this specific job — reordering and rewording bullets to surface the most relevant experience and inject matching keywords naturally, without fabricating anything not supported by the base resume.\n\nCRITICAL RULE: The customized_resume MUST include ALL work history entries, jobs, and positions from the original resume. Do NOT omit or truncate any positions. You may reorder them to put the most relevant experience first, but every position from the original resume must appear in the final output.\n\nIf the alignment score is below 55, set needs_clarification to true and ask 2-4 specific clarifying questions about experience gaps before finalizing the rewrite (but still provide your best-effort customized_resume).\n\n${ANALYZE_SCHEMA_INSTRUCTIONS}`;
       
       setAnalyzeLoading('Analyzing job description...');
       const raw = await callAI(system, 'Job description:\n\n' + jd, 8000);
@@ -788,7 +788,7 @@ async function generateResumeInChunks(jd, resume, keywords, score) {
     { name: 'HEADER', prompt: 'Generate a professional header with contact information placeholder' },
     { name: 'SUMMARY', prompt: 'Write a 2-3 sentence executive summary tailored to this job' },
     { name: 'SKILLS', prompt: 'Create a skills section with relevant technical and soft skills' },
-    { name: 'EXPERIENCE', prompt: 'Rewrite the work experience section with tailored bullet points' },
+    { name: 'EXPERIENCE', prompt: 'Rewrite the work experience section with tailored bullet points. CRITICAL: Include ALL jobs and positions from the original resume - do NOT omit any positions. You may reorder them to put the most relevant experience first, but every position must appear.' },
     { name: 'EDUCATION', prompt: 'Include the education section' }
   ];
   
@@ -806,6 +806,8 @@ ${resume}
 
 Task: ${section.prompt}
 
+CRITICAL RULE: When generating the EXPERIENCE section, you MUST include ALL work history entries, jobs, and positions from the original resume. Do NOT omit or truncate any positions. You may reorder them to put the most relevant experience first, but every position from the original resume must appear in the final output.
+
 Rules:
 - Use plain text formatting (no markdown)
 - Use capital letters for section headers
@@ -813,6 +815,7 @@ Rules:
 - Keep it concise and impactful
 - Naturally incorporate relevant keywords
 - Be truthful to the original resume
+- Include complete work history - every job/position from original
 
 Return ONLY the ${section.name} section text, nothing else.`;
 
